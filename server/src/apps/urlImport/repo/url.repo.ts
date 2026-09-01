@@ -6,6 +6,7 @@ import { urlBatchSchema } from "../schema/urlBatch.schema";
 
 
 export class UrlRepository {
+    // The last runner argument allows for the service layer to pass in a transaction if it wants.
     public static async createBatch(batchName: string, urls: string[], runner: DbOrTx = db) {
         return await runner.transaction(async (tx) => {
             const batch = await tx.insert(batchSchema).values({ name: batchName }).returning();
@@ -55,5 +56,14 @@ export class UrlRepository {
             }
         })
         return url;
+    }
+
+    public static async getBatchById(batchId: string, runner: DbOrTx = db) {
+        const batch = await runner.query.batchSchema.findFirst({
+            where: {
+                id: batchId
+            }
+        })
+        return batch;
     }
 }

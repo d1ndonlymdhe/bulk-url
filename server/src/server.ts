@@ -23,6 +23,18 @@ fastify.get("/batches", async (req, res) => {
     res.send(batches);
 })
 
+fastify.get("/batches/:batchId", {
+    schema: {
+        params: Type.Object({
+            batchId: Type.String()
+        })
+    }
+}, async (req, res) => {
+    const { batchId } = req.params
+    const batchWithUrls = await UrlService.getBatch(batchId);
+    res.send(batchWithUrls);
+})
+
 fastify.get("/batches/:batchId/urls", {
     schema: {
         params: Type.Object({
@@ -50,7 +62,7 @@ fastify.post("/batch", {
 
 fastify.listen({
     host: "0.0.0.0",
-    port: 3000
+    port: 8000
 }, (err, address) => {
     if (err) {
         fastify.log.error(err);

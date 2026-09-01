@@ -3,8 +3,13 @@ import { UrlRepository } from "../repo/url.repo";
 export class UrlService {
 
     public static async getAllBatches() {
-        const batches = await UrlRepository.getAllBatchesWithUrls();
+        const batches = await UrlRepository.getAllBatches();
         return batches;
+    }
+
+    public static async getBatch(batchId: string) {
+        const batch = await UrlRepository.getBatchById(batchId);
+        return batch;
     }
 
     public static async getUrlsByBatchId(batchId: string) {
