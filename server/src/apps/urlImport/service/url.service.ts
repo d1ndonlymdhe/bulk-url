@@ -1,3 +1,4 @@
+import { batchQueue } from "../../../queue";
 import { UrlRepository } from "../repo/url.repo";
 
 export class UrlService {
@@ -34,6 +35,11 @@ export class UrlService {
 
     public static async importUrls(batchName: string, urls: string[]) {
         const result = await UrlRepository.createBatch(batchName, urls);
+        if (result.batch) {
+            await batchQueue.add('batch-job', {
+                batchId: result.batch.id,
+            });
+        }
         return result;
     }
 

@@ -1,9 +1,9 @@
 import type { DbOrTx } from "../../../dbOrTx";
 import db from "../../../drizzle";
 import { batchSchema } from "../schema/batch.schema";
-import { urlSchema } from "../schema/url.schema";
+import { urlSchema, type UrlJobStatus } from "../schema/url.schema";
 import { urlBatchSchema } from "../schema/urlBatch.schema";
-
+import { eq } from "drizzle-orm";
 
 export class UrlRepository {
     // The last runner argument allows for the service layer to pass in a transaction if it wants.
@@ -65,5 +65,33 @@ export class UrlRepository {
             }
         })
         return batch;
+    }
+
+    public static async getQueuedUrlsFromBatch(batchId: string, runner: DbOrTx = db) {
+        const batch = await runner.query.batchSchema.findFirst({
+            with: {
+                urls: {
+                    where: {
+                        jobStatus: "queued"
+                    }
+                }
+            },
+            where: {
+                id: batchId
+            }
+        },
+        )
+
+        return batch;
+    }
+
+    public static async updateUrlJobResult(urlId: string, jobStatus: UrlJobStatus, title: string | null, responseTime: number, responseStatus: number, runner: DbOrTx = db) {
+        const updatedUrl = await runner.update(urlSchema).set({
+            jobStatus: jobStatus,
+            title,
+            responseTime,
+            responseStatus
+        }).where(eq(urlSchema.id, urlId)).returning();
+        return updatedUrl[0];
     }
 }
