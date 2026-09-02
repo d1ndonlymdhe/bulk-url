@@ -9,9 +9,16 @@ export type Batch = {
     updatedAt: string;
 };
 
+export const urlJobStatusValues = ["queued", "processing", "complete", "failed"] as const;
+export type UrlJobStatus = (typeof urlJobStatusValues)[number];
+
 export type Url = {
     id: string;
     url: string;
+    jobStatus: UrlJobStatus;
+    title: string | null;
+    responseTime: number | null;
+    responseStatus: number | null;
     createdAt: string;
     updatedAt: string;
 };

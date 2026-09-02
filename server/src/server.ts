@@ -2,19 +2,71 @@ import Fastify from 'fastify'
 
 import * as multipart from "@fastify/multipart";
 import * as cors from "@fastify/cors";
+import * as sse from "@fastify/sse";
 import { Type, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { UrlService } from './apps/urlImport/service/url.service';
+import { UserContext } from './apps/context/userContext';
+import { ActiveUrlJobsContext } from './apps/context/jobsContext';
 
 
 
 const fastify = Fastify({
-    logger: true
+    logger: false
 }).withTypeProvider<TypeBoxTypeProvider>();
 
-fastify.register(multipart.default);
-fastify.register(cors.default, {
+// bun allows top level await
+await fastify.register(multipart.default);
+await fastify.register(cors.default, {
     origin: "*",
+    allowedHeaders: "*",
 })
+await fastify.register(sse.default);
+
+fastify.get("/register-batch-sse/:batchId", {
+    sse: true,
+    schema: {
+        params: Type.Object({
+            batchId: Type.String()
+        })
+    }
+}, async (req, res) => {
+    res.header("Content-Type", "text/event-stream");
+    const { batchId } = req.params;
+    const stream = res.sse;
+    stream.keepAlive();
+    stream.sendHeaders(200);
+    const batchWithUrls = await UrlService.getUrlsByBatchId(batchId);
+    if (!batchWithUrls) {
+        res.status(404).send({ error: `Batch with id ${batchId} not found` });
+        return;
+    }
+    const urls = batchWithUrls;
+    const urlIds = urls.map(url => url.id);
+    const userContext = new UserContext(urlIds, stream);
+    const contextId = userContext.getId();
+    ActiveUrlJobsContext.addUserContext(userContext);
+    // Cleanup when the stream is closed
+    stream.onClose(() => {
+
+        ActiveUrlJobsContext.removeUserContext(contextId);
+        console.log(`SSE stream closed for batch ${batchId}, user context ${contextId} removed`);
+    })
+
+})
+
+// FOR TESTING
+fastify.get("/test-endpoint/:waitTime", {
+    schema: {
+        params: Type.Object({
+            waitTime: Type.Number()
+        })
+    }
+}, async (req, res) => {
+    const { waitTime } = req.params;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+    res.send({ message: `Waited for ${waitTime} ms` });
+})
+
 
 fastify.get("/", async (req, res) => {
     res.send({ message: "HELLO" });

@@ -10,7 +10,7 @@ const urlQueue = new Queue<UrlJobData>('url-queue', { connection });
 // Add typebox type validation for the job data
 const batchWorker = new Worker<BatchJobData>('batch-queue', async (job) => {
     const batchInfo = await UrlRepository.getBatchWithUrls(job.data.batchId);
-    if(!batchInfo) {
+    if (!batchInfo) {
         return;
     }
     const urls = batchInfo.urls;
@@ -19,9 +19,11 @@ const batchWorker = new Worker<BatchJobData>('batch-queue', async (job) => {
         data: { url: url.url },
         opts: {
             jobId: url.id,
+            attempts: 5,
             backoff: {
                 type: 'exponential',
-                delay: 1000
+                delay: 1000,
+
             }
         }
     })));
@@ -31,10 +33,17 @@ const batchWorker = new Worker<BatchJobData>('batch-queue', async (job) => {
 })
 
 const urlWorker = new Worker<UrlJobData>('url-queue', async (job) => {
-    const { url } = job.data;
-    // If this throws then the job will be retried based on the retry options
-    const result = await pingUrl(url);
-    return result;
+    try {
+        const { url } = job.data;
+        // If this throws then the job will be retried based on the retry options
+        const result = await pingUrl(url);
+
+        await UrlRepository.updateUrlJobResult(job.id!, 'complete', result.title, result.duration, result.status);
+
+        return result;
+    } catch (error) {
+        // Record as failed in the database;
+    }
 }, {
     connection,
     concurrency: 5,
