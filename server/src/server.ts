@@ -11,7 +11,7 @@ import { ActiveUrlJobsContext } from './apps/context/jobsContext';
 
 
 const fastify = Fastify({
-    logger: false
+    logger: false,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 // bun allows top level await

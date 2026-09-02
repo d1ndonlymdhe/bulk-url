@@ -1,4 +1,5 @@
 import type { SSEReplyInterface } from "@fastify/sse";
+import type { Url } from "../urlImport/schema/url.schema";
 
 export class UserContext {
     id: string;
@@ -16,13 +17,16 @@ export class UserContext {
     addActiveUrl(urlId: string) {
         this.activeUrls.add(urlId);
     }
-    completeUrl(urlId: string,result: any) {
+    completeUrl(urlId: string,result: Url) {
         const removed = this.activeUrls.delete(urlId);
         // Send the result to the client via SSE
         if(removed){
             this.stream.send({
                 event: 'url-complete',
-                data: JSON.stringify({ urlId, result })
+                data: {
+                    urlId,
+                    result
+                }
             });
         }
     }

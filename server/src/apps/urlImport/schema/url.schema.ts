@@ -24,3 +24,5 @@ export const urlSchema = pgTable("url", {
         .defaultNow()
         .notNull(),
 })
+
+export type Url = typeof urlSchema.$inferSelect;

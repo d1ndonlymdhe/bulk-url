@@ -1,3 +1,4 @@
+import type { Url } from "../urlImport/schema/url.schema";
 import type { UserContext } from "./userContext";
 
 export class ActiveUrlJobsContext {
@@ -7,7 +8,7 @@ export class ActiveUrlJobsContext {
     static addJobId(jobId: string) {
         this.urlIds.add(jobId);
     }
-    static completeJob(jobId: string, result: any) {
+    static completeJob(jobId: string, result: Url) {
         this.urlIds.delete(jobId);
         // Notify all user contexts that the job is complete
         this.userContexts.forEach(userContext => {
