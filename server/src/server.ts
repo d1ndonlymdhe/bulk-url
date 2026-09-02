@@ -4,6 +4,15 @@ import * as multipart from "@fastify/multipart";
 import * as cors from "@fastify/cors";
 import { Type, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { UrlService } from './apps/urlImport/service/url.service';
+import { Queue } from "bullmq";
+
+const queue = new Queue('my-queue', {
+    connection: {
+        host: process.env.REDIS_HOST,
+        port: parseInt(process.env.REDIS_PORT || '6379')
+    }
+});
+
 
 const fastify = Fastify({
     logger: true
@@ -15,6 +24,8 @@ fastify.register(cors.default, {
 })
 
 fastify.get("/", async (req, res) => {
+    const x = await queue.add("my-job", { foo: "bar" });
+    
     res.send({ message: "HELLO" });
 })
 
