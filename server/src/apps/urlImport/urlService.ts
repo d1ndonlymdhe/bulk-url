@@ -1,11 +1,20 @@
-import { batchQueue } from "../../../queue";
-import { ActiveUrlJobsContext } from "../../context/jobsContext";
+import { batchQueue } from "../../queue";
+import { RedisCache } from "../cache/redisCache";
+import { ActiveUrlJobsContext } from "../context/jobsContext";
 import { UrlRepository } from "@myapp/db";
 
 export class UrlService {
 
     public static async getAllBatches() {
+        // Doc only asked for cache in list batches endpoint, so we will cache the result of this method
+        const cachedBatches = await RedisCache.getBatchesFromCache();
+        if (cachedBatches) {
+            console.log("Returning batches from cache");
+            return cachedBatches;
+        }
         const batches = await UrlRepository.getAllBatches();
+        console.log("Writing batches to cache");
+        await RedisCache.writeBatchesToCache(batches);
         return batches;
     }
 
@@ -30,9 +39,6 @@ export class UrlService {
         return url;
     }
 
-    public static async importUrlsFromFile(batchName: string, file: File) {
-        const text = await file.text();
-    }
 
     public static async importUrls(batchName: string, urls: string[]) {
         const result = await UrlRepository.createBatch(batchName, urls);
@@ -42,6 +48,9 @@ export class UrlService {
                 forceRetry: false
             });
         }
+        console.log("Clearing batches cache");
+        // Clear the batches cache, we only have a create method, if there were other methods that could modify the batches, we would need to clear the cache in those methods as well
+        await RedisCache.clearBatchesCache();
         return result;
     }
 
@@ -64,7 +73,7 @@ export class UrlService {
         ActiveUrlJobsContext.cancelBatch(batch.id);
     }
 
-    public static async reprocessIncompleteBatches(){
+    public static async reprocessIncompleteBatches() {
         const incompleteBatches = await UrlRepository.getBatchesToProcess();
         for (const batch of incompleteBatches) {
             await batchQueue.add('batch-job', {

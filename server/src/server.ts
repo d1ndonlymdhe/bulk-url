@@ -4,7 +4,7 @@ import * as multipart from "@fastify/multipart";
 import * as cors from "@fastify/cors";
 import * as sse from "@fastify/sse";
 import { Type, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { UrlService } from './apps/urlImport/service/url.service';
+import { UrlService } from './apps/urlImport/urlService';
 import { UserContext } from './apps/context/userContext';
 import { ActiveUrlJobsContext } from './apps/context/jobsContext';
 

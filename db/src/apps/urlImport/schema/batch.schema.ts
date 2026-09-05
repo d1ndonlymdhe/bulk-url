@@ -12,3 +12,5 @@ export const batchSchema = pgTable("batch", {
         .defaultNow()
         .notNull(),
 })
+
+export type Batch = typeof batchSchema.$inferSelect;
