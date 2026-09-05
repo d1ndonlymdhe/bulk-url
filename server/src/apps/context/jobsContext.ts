@@ -1,5 +1,5 @@
-import { connection } from "../../../shared/redisConnection";
-import { UrlRepository } from "../urlImport/repo/url.repo";
+import { connection } from "@myapp/shared/redisConnection";
+import { UrlRepository, type Url } from "@myapp/db";
 import type { UrlRow } from "@myapp/shared/config";
 import { UserContext } from "./userContext";
 import { Redis } from "ioredis";
@@ -8,7 +8,7 @@ export class ActiveUrlJobsContext {
     private static redisConnection = new Redis({
         ...connection
     });
-    static jobUpdated(jobId: string, result: UrlRow) {
+    static jobUpdated(jobId: string, result: UrlRow | Url) {
         // Notify all user contexts that the job is complete
         this.userContexts.forEach(userContext => {
             userContext.jobUpdated(jobId, result);

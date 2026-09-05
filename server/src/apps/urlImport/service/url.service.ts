@@ -1,7 +1,6 @@
-import db from "../../../drizzle";
 import { batchQueue } from "../../../queue";
 import { ActiveUrlJobsContext } from "../../context/jobsContext";
-import { UrlRepository } from "../repo/url.repo";
+import { UrlRepository } from "@myapp/db";
 
 export class UrlService {
 

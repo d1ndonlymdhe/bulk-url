@@ -1,7 +1,7 @@
 import { Queue, QueueEvents, type QueueEventsListener } from "bullmq";
-import { connection } from "../shared/redisConnection";
+import { connection } from "@myapp/shared/redisConnection";
 import { BATCH_QUEUE_NAME, URL_QUEUE_NAME, type BatchJobData, type UrlJobData } from "@myapp/shared/config";
-import { UrlRepository } from "./apps/urlImport/repo/url.repo";
+import { UrlRepository } from "@myapp/db";
 import { ActiveUrlJobsContext } from "./apps/context/jobsContext";
 
 export const batchQueue = new Queue<BatchJobData>(BATCH_QUEUE_NAME, { connection })
@@ -14,6 +14,15 @@ const urlQueueEvents = new QueueEvents(URL_QUEUE_NAME, { connection });
 interface CustomEventsListener extends QueueEventsListener {
     'url-started': (args: { jobId: string }, id: string) => void
     // Parse as JSON array
+    /**
+     * Real payload shape:
+     * {
+     *  data: string[]
+     * }
+     * @param args 
+     * @param id 
+     * @returns 
+     */
     'batch-updated': (args: { affectedUrlIds: string }, id: string) => void
 }
 
@@ -46,7 +55,10 @@ urlQueueEvents.on<CustomEventsListener>('url-started', async ({ jobId }: { jobId
 })
 
 urlQueueEvents.on<CustomEventsListener>('batch-updated', async ({ affectedUrlIds }: { affectedUrlIds: string }) => {
-    ActiveUrlJobsContext.batchUpdated(JSON.parse(affectedUrlIds) as string[]);
+    console.log("Affected Url Ids")
+    console.log(typeof affectedUrlIds);
+    const parsed = JSON.parse(affectedUrlIds) as { data: string[] };
+    ActiveUrlJobsContext.batchUpdated(parsed.data);
 })
 
 

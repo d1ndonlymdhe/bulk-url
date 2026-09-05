@@ -1,0 +1,16 @@
+{
+  "name": "@myapp/worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@myapp/db": "workspace:*",
+    "@myapp/shared": "workspace:*",
+    "bullmq": "^6.3.4",
+    "dotenv": "^17.4.2",
+    "ioredis": "^6.0.0"
+  }
+}

@@ -8,7 +8,6 @@ export const urlSchema = pgTable("url", {
     id: uuid("id").defaultRandom().primaryKey(),
     url: text("url").notNull(),
 
-    // URL job status
     jobStatus: urlJobStatusEnum("job_status").default("queued").notNull(),
 
     title: text("title"),

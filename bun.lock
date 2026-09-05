@@ -28,6 +28,20 @@
         "typescript": "^5",
       },
     },
+    "db": {
+      "name": "@myapp/db",
+      "version": "1.0.0",
+      "dependencies": {
+        "@myapp/shared": "workspace:*",
+        "dotenv": "^17.4.2",
+        "drizzle-orm": "^1.0.0-rc.4",
+        "pg": "^8.23.0",
+      },
+      "devDependencies": {
+        "@types/pg": "^8.23.1",
+        "drizzle-kit": "^1.0.0-rc.4",
+      },
+    },
     "server": {
       "name": "server",
       "dependencies": {
@@ -35,6 +49,7 @@
         "@fastify/multipart": "^10.1.1",
         "@fastify/sse": "^0.6.0",
         "@fastify/type-provider-typebox": "^6.1.0",
+        "@myapp/db": "workspace:*",
         "@myapp/shared": "workspace:*",
         "bullmq": "^6.3.4",
         "dotenv": "^17.4.2",
@@ -57,6 +72,17 @@
     "shared": {
       "name": "@myapp/shared",
       "version": "1.0.0",
+    },
+    "worker": {
+      "name": "@myapp/worker",
+      "version": "1.0.0",
+      "dependencies": {
+        "@myapp/db": "workspace:*",
+        "@myapp/shared": "workspace:*",
+        "bullmq": "^6.3.4",
+        "dotenv": "^17.4.2",
+        "ioredis": "^6.0.0",
+      },
     },
   },
   "trustedDependencies": [
@@ -304,7 +330,11 @@
 
     "@msgpackr-extract/msgpackr-extract-win32-x64": ["@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4", "", { "os": "win32", "cpu": "x64" }, "sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ=="],
 
+    "@myapp/db": ["@myapp/db@workspace:db"],
+
     "@myapp/shared": ["@myapp/shared@workspace:shared"],
+
+    "@myapp/worker": ["@myapp/worker@workspace:worker"],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.2.3", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1 || ^2.0.0-alpha.4", "@emnapi/runtime": "^1.7.1 || ^2.0.0-alpha.4" } }, "sha512-UMduMbqO5s5zF2NkNacMT/yK5Y5QiKvWr2+50bzIIxFDwVJ2h49b+oyjaCGPhJxd2/gC2x39EHv/gHVuu36x2Q=="],
 

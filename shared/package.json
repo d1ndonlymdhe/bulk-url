@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "main": "./config.ts",
-  "types": "./config.ts"
+  "types": "./config.ts",
+  "exports": {
+    "./config": "./config.ts",
+    "./redisConnection": "./redisConnection.ts"
+  }
 }
