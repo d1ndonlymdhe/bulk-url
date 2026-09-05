@@ -11,7 +11,9 @@ export const urlJobStatusValues = [
     // Success
     "complete",
     // Failed max attempts time, user has to manually retry and set as queued
-    "failed"
+    "failed",
+    // User manually cancelled the job
+    "cancelled"
 ] as const;
 export const urlJobStatusEnum = pgEnum("url_status", urlJobStatusValues);
 export type UrlJobStatus = (typeof urlJobStatusValues)[number];

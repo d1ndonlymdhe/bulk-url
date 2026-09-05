@@ -8,8 +8,6 @@ import { UrlService } from './apps/urlImport/service/url.service';
 import { UserContext } from './apps/context/userContext';
 import { ActiveUrlJobsContext } from './apps/context/jobsContext';
 
-
-
 const fastify = Fastify({
     logger: false,
 }).withTypeProvider<TypeBoxTypeProvider>();
@@ -21,6 +19,11 @@ await fastify.register(cors.default, {
     allowedHeaders: "*",
 })
 await fastify.register(sse.default);
+
+// On startup add incomplete jobs back to the queue the workers will de-duplicate as needed
+fastify.addHook("onReady", async () => {
+    await UrlService.reprocessIncompleteBatches();
+})
 
 fastify.get("/register-batch-sse/:batchId", {
     sse: true,
@@ -134,6 +137,18 @@ fastify.post("/batch/:batchId/retry", {
 }, async (req, res) => {
     const { batchId } = req.params;
     const result = await UrlService.retryFailedUrls(batchId);
+    res.send(result);
+})
+
+fastify.post("/batch/:batchId/cancel", {
+    schema: {
+        params: Type.Object({
+            batchId: Type.String()
+        })
+    }
+}, async (req, res) => {
+    const { batchId } = req.params;
+    const result = await UrlService.cancelBatch(batchId);
     res.send(result);
 })
 

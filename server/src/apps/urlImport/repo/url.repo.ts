@@ -68,7 +68,7 @@ export class UrlRepository {
         return batch;
     }
 
-    public static async getQueuedUrlsFromBatch(batchId: string, runner: DbOrTx = db) {
+    public static async getUrlsToProcessFromBatch(batchId: string, runner: DbOrTx = db) {
         const batch = await runner.query.batchSchema.findFirst({
             with: {
                 urls: {
@@ -79,7 +79,7 @@ export class UrlRepository {
                             },
                             {
                                 jobStatus: "re-queued"
-                            }
+                            },
                         ]
                     }
                 }
@@ -91,6 +91,26 @@ export class UrlRepository {
         )
 
         return batch;
+    }
+
+    public static async getBatchesToProcess(runner: DbOrTx = db) {
+        const batches = await runner.query.batchSchema.findMany({
+            with: {
+                urls: {
+                    where: {
+                        OR: [
+                            {
+                                jobStatus: "queued"
+                            },
+                            {
+                                jobStatus: "re-queued"
+                            },
+                        ]
+                    }
+                }
+            }
+        })
+        return batches;
     }
 
     public static async getFailedUrlsFromBatch(batchId: string, runner: DbOrTx = db) {
@@ -139,7 +159,6 @@ export class UrlRepository {
 
     public static async markAsFailed(urlId: string, runner: DbOrTx = db) {
         // If the task has failed less than MAX_RETRIES_TIMES mark as queued again and increment the attempts counter, after max attempts the user retries manually
-        console.log(`Marking URL ${urlId} as failed, checking attempts...`);
         try {
             const updatedUrl = await runner.update(urlSchema).set({
                 jobStatus: sql`CASE
@@ -147,10 +166,18 @@ export class UrlRepository {
                 else 'failed'::${urlJobStatusEnum}
                 END`
             }).where(eq(urlSchema.id, urlId)).returning();
-            console.log(`URL ${urlId} marked as ${updatedUrl[0]?.jobStatus}`);
             return updatedUrl[0];
         } catch (err) {
             console.error(`Error marking URL ${urlId} as failed:`, err);
         }
+    }
+
+    public static async markAsCancelled(urlId: string, runner: DbOrTx = db) {
+        const updatedUrl = await runner.update(urlSchema).set({
+            jobStatus: "cancelled",
+            // reset attempts to 0 so that if the user retries the job it will be re-queued
+            attempts: 0
+        }).where(eq(urlSchema.id, urlId)).returning();
+        return updatedUrl[0];
     }
 }

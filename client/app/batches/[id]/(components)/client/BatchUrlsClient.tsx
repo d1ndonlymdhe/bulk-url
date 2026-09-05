@@ -11,7 +11,8 @@ const jobStatusColor: Record<UrlJobStatus, string> = {
     processing: "blue",
     complete: "green",
     failed: "red",
-    "re-queued": "orange"
+    "re-queued": "orange",
+    "cancelled": "dimmed"
 };
 
 function StatusBadge({ status }: { status: UrlJobStatus }) {
@@ -36,9 +37,38 @@ function ResponseStatusBadge({ url }: { url: Url }) {
 export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchId: string }) {
     const [localUrls, setLocalUrls] = useState<Url[]>(urls);
 
-    const { mutate, isPending, isSuccess, isError } = useMutation({
+    const { mutate: retryFailedUrls, isPending, isSuccess, isError } = useMutation({
         mutationFn: async (batchId: string) => {
             return await BatchesApi.retryFailedUrls(batchId);
+        },
+        onSuccess: () => {
+            // Optimistic update
+            // setLocalUrls((prevUrls) => {
+            //     return prevUrls.map(u => {
+            //         return {
+            //             ...u,
+            //             jobStatus: u.jobStatus == "failed" ? "re-queued" : u.jobStatus,
+            //             attempts: u.jobStatus == "failed" ? 0 : u.attempts
+            //         }
+            //     })
+            // })
+        }
+    })
+
+    const { mutate: cancelBatch, isPending: isCancelPending } = useMutation({
+        mutationFn: async (batchId: string) => {
+            return await BatchesApi.cancelBatch(batchId);
+        },
+        onSuccess: () => {
+            // Optimistic update
+            // setLocalUrls((prevUrls) => {
+            //     return prevUrls.map(u => {
+            //         return {
+            //             ...u,
+            //             jobStatus: u.jobStatus !== "complete" && u.jobStatus !== "failed" ? "cancelled" : u.jobStatus
+            //         }
+            //     })
+            // })
         }
     })
 
@@ -58,22 +88,14 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
         <Group justify="space-between" mb="sm">
             <Title order={2} size="h4">URLs</Title>
             <Button onClick={() => {
-                mutate(batchId, {
-                    onSuccess: () => {
-                        // Optimistic update
-                        setLocalUrls((prevUrls) => {
-                            return prevUrls.map(u => {
-                                return {
-                                    ...u,
-                                    jobStatus: u.jobStatus == "failed" ? "re-queued" : u.jobStatus,
-                                    attempts: u.jobStatus == "failed" ? 0 : u.attempts
-                                }
-                            })
-                        })
-                    }
-                })
+                retryFailedUrls(batchId)
             }} loading={isPending} disabled={localUrls.filter(url => url.jobStatus === "failed").length === 0}>
                 Retry Failed
+            </Button>
+            <Button color="red" onClick={() => {
+                cancelBatch(batchId)
+            }} loading={isCancelPending} disabled={localUrls.filter(url => url.jobStatus !== "complete" && url.jobStatus !== "cancelled" && url.jobStatus !== "failed").length === 0}>
+                Cancel Batch
             </Button>
             <Badge variant="light">{urls.length} total</Badge>
         </Group>

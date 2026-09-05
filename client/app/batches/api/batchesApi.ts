@@ -9,7 +9,7 @@ export type Batch = {
     updatedAt: string;
 };
 
-export const urlJobStatusValues = ["queued", "re-queued", "processing", "complete", "failed"] as const;
+export const urlJobStatusValues = ["queued", "re-queued", "processing", "complete", "failed", "cancelled"] as const;
 export type UrlJobStatus = (typeof urlJobStatusValues)[number];
 export const MAX_URL_RETRIES = 3;
 export type Url = {
@@ -58,6 +58,14 @@ export namespace BatchesApi {
     // POST /batch/:batchId/retry
     export function retryFailedUrls(batchId: string) {
         return serverFetch<void>(`/batch/${encodeURIComponent(batchId)}/retry`, {
+            method: "POST",
+            body: JSON.stringify({}),
+        });
+    }
+
+    // POST /batch/:batchId/cancel
+    export function cancelBatch(batchId: string) {
+        return serverFetch<void>(`/batch/${encodeURIComponent(batchId)}/cancel`, {
             method: "POST",
             body: JSON.stringify({}),
         });

@@ -1,5 +1,6 @@
 import db from "../../../drizzle";
 import { batchQueue } from "../../../queue";
+import { ActiveUrlJobsContext } from "../../context/jobsContext";
 import { UrlRepository } from "../repo/url.repo";
 
 export class UrlService {
@@ -39,6 +40,7 @@ export class UrlService {
         if (result.batch) {
             await batchQueue.add('batch-job', {
                 batchId: result.batch.id,
+                forceRetry: false
             });
         }
         return result;
@@ -53,6 +55,24 @@ export class UrlService {
             batchId: batch.id,
             forceRetry: true
         })
+    }
+
+    public static async cancelBatch(batchId: string) {
+        const batch = await UrlRepository.getBatchById(batchId);
+        if (!batch) {
+            throw new Error(`Batch with id ${batchId} not found`);
+        }
+        ActiveUrlJobsContext.cancelBatch(batch.id);
+    }
+
+    public static async reprocessIncompleteBatches(){
+        const incompleteBatches = await UrlRepository.getBatchesToProcess();
+        for (const batch of incompleteBatches) {
+            await batchQueue.add('batch-job', {
+                batchId: batch.id,
+                forceRetry: false
+            })
+        }
     }
 
 }

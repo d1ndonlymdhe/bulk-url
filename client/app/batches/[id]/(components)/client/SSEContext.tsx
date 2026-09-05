@@ -23,6 +23,7 @@ export default function SSEContext({
             const data = JSON.parse(event.data) as {
                 result: Url
             };
+            console.log("Received url-complete event:", data);
             updateUrlState(data.result);
         });
     }
