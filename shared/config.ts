@@ -26,15 +26,16 @@ export type UrlRow = {
 };
 
 export const BULLMQ_QUEUE_EVENT_NAMES = {
-  URL_STARTED: 'url-started',
+  URL_UPDATED: 'url-updated',
   BATCH_UPDATED: 'batch-updated',
 } as const;
 
 export type BullMQQueueEventName =
   (typeof BULLMQ_QUEUE_EVENT_NAMES)[keyof typeof BULLMQ_QUEUE_EVENT_NAMES];
 
-export type UrlStartedQueueEvent = {
+export type UrlUpdatedQueueEvent = {
   jobId: string;
+  status: UrlJobStatus;
 };
 
 export type BatchUpdatedQueueEvent = {

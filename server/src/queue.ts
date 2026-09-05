@@ -1,6 +1,6 @@
 import { Queue, QueueEvents, type QueueEventsListener } from "bullmq";
 import { connection } from "@myapp/shared/redisConnection";
-import { BATCH_QUEUE_NAME, URL_QUEUE_NAME, type BatchJobData, type UrlJobData } from "@myapp/shared/config";
+import { BATCH_QUEUE_NAME, BULLMQ_QUEUE_EVENT_NAMES, URL_QUEUE_NAME, type BatchJobData, type UrlJobData, type UrlUpdatedQueueEvent } from "@myapp/shared/config";
 import { UrlRepository } from "@myapp/db";
 import { ActiveUrlJobsContext } from "./apps/context/jobsContext";
 
@@ -12,7 +12,7 @@ const urlQueueEvents = new QueueEvents(URL_QUEUE_NAME, { connection });
 
 
 interface CustomEventsListener extends QueueEventsListener {
-    'url-started': (args: { jobId: string }, id: string) => void
+    [BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED]: (args: UrlUpdatedQueueEvent, id: string) => void
     // Parse as JSON array
     /**
      * Real payload shape:
@@ -23,38 +23,23 @@ interface CustomEventsListener extends QueueEventsListener {
      * @param id 
      * @returns 
      */
-    'batch-updated': (args: { affectedUrlIds: string }, id: string) => void
+    [BULLMQ_QUEUE_EVENT_NAMES.BATCH_UPDATED]: (args: { affectedUrlIds: string }, id: string) => void
 }
 
-urlQueueEvents.on('completed', async (job) => {
-    console.log(`Job ${job.jobId} has completed!`);
-    const completedUrl = await UrlRepository.getUrl(job.jobId);
-    if (completedUrl) {
-        // Notify the job context that the job is complete
-        ActiveUrlJobsContext.jobUpdated(job.jobId, completedUrl);
-    }
-})
 
-
-urlQueueEvents.on('failed', async (job) => {
-    console.log(`Job ${job.jobId} has failed!`);
-    const failedUrl = await UrlRepository.getUrl(job.jobId);
-    // same event for the consumer
-    if (failedUrl) {
-        // Notify the job context that the job is complete
-        ActiveUrlJobsContext.jobUpdated(job.jobId, failedUrl);
-    }
-})
-
-urlQueueEvents.on<CustomEventsListener>('url-started', async ({ jobId }: { jobId: string }) => {
-    console.log(`Job ${jobId} has started`);
+urlQueueEvents.on<CustomEventsListener>(BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED, async ({ jobId, status }: UrlUpdatedQueueEvent) => {
+    console.log(`Job ${jobId} has updated`);
     const jobInfo = await UrlRepository.getUrl(jobId);
     if (jobInfo) {
-        ActiveUrlJobsContext.jobUpdated(jobId, jobInfo);
+        console.log("job status = ", jobInfo?.jobStatus);
+        ActiveUrlJobsContext.jobUpdated(jobId, {
+            ...jobInfo,
+            jobStatus: status as any
+        });
     }
 })
 
-urlQueueEvents.on<CustomEventsListener>('batch-updated', async ({ affectedUrlIds }: { affectedUrlIds: string }) => {
+urlQueueEvents.on<CustomEventsListener>(BULLMQ_QUEUE_EVENT_NAMES.BATCH_UPDATED, async ({ affectedUrlIds }: { affectedUrlIds: string }) => {
     console.log("Affected Url Ids")
     console.log(typeof affectedUrlIds);
     const parsed = JSON.parse(affectedUrlIds) as { data: string[] };

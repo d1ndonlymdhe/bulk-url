@@ -25,12 +25,16 @@ export class UserContext {
     }
     jobUpdated(urlId: string, result: UrlRow) {
         const has = this.activeUrls.has(urlId);
+        
         if (has) {
+            console.log(`UserContext ${this.id} has urlId ${urlId} in activeUrls`);
             const payload: JobUpdatedSsePayload = { result };
             this.stream.send({
                 event: SSE_EVENT_NAMES.JOB_UPDATED,
                 data: payload,
             });
+        }else{
+            console.log(`UserContext ${this.id} does not have urlId ${urlId} in activeUrls`);
         }
     }
     multipleJobsUpdated(urls: UrlRow[]) {

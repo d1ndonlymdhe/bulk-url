@@ -27,7 +27,7 @@ export default function SSEContext({
             updateUrlState(data.result);
         });
 
-        eventSource.addEventListener('multiple-jobs-updated', (event: MessageEvent)=>{
+        eventSource.addEventListener('multiple-jobs-updated', (event: MessageEvent) => {
             const data = JSON.parse(event.data) as {
                 result: Url[]
             };

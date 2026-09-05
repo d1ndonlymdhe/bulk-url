@@ -96,7 +96,7 @@ export class UrlRepository {
   }
 
   public static async requeueUrls(urlIds: string[], runner: DbOrTx = db) {
-    return runner.update(urlSchema).set({ jobStatus: "queued", attempts: 0 }).where(inArray(urlSchema.id, urlIds)).returning();
+    return runner.update(urlSchema).set({ jobStatus: "re-queued", attempts: 0 }).where(inArray(urlSchema.id, urlIds)).returning();
   }
 
   public static async markAsStarted(urlId: string, runner: DbOrTx = db) {
@@ -119,13 +119,21 @@ export class UrlRepository {
 
   public static async markAsFailed(urlId: string, runner: DbOrTx = db) {
     try {
-      const updatedUrl = await runner.update(urlSchema).set({
-        jobStatus: sql`CASE
-          WHEN ${urlSchema.attempts} < ${MAX_URL_RETRIES} THEN 're-queued'::${urlJobStatusEnum}
-          ELSE 'failed'::${urlJobStatusEnum}
-        END`,
-      }).where(eq(urlSchema.id, urlId)).returning();
-      return updatedUrl[0];
+      return await runner.transaction(async (tx) => {
+        const jobState = await tx.query.urlSchema.findFirst({ where: { id: urlId } });
+        if (!jobState) throw new Error(`URL with id ${urlId} not found`);
+        if ((jobState.attempts || 0) < MAX_URL_RETRIES) {
+          const updatedUrl = await runner.update(urlSchema).set({
+            jobStatus: "re-queued",
+          }).where(eq(urlSchema.id, urlId)).returning();
+          return updatedUrl[0];
+        } else {
+          const updatedUrl = await runner.update(urlSchema).set({
+            jobStatus: "failed",
+          }).where(eq(urlSchema.id, urlId)).returning();
+          return updatedUrl[0];
+        }
+      })
     } catch (err) {
       console.error(`Error marking URL ${urlId} as failed:`, err);
     }

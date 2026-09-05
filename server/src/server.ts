@@ -77,8 +77,9 @@ fastify.get("/test-endpoint/:waitTime/fail", {
 }, async (req, res) => {
     const { waitTime } = req.params;
     await new Promise(resolve => setTimeout(resolve, waitTime));
-    res.raw.socket?.destroy();
-    // res.send({ message: `Waited for ${waitTime} ms` });
+    // Stream destroy has problems with nginx, nginx sends its own 502
+    // res.raw.socket?.destroy();
+    res.status(500).send({ error: `Failed after waiting for ${waitTime} ms` });
 })
 
 
