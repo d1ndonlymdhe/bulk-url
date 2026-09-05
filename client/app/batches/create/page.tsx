@@ -1,10 +1,17 @@
 "use client";
 
 import { BatchesApi } from "@/app/batches/api/batchesApi";
-import { Badge, Button, Card, Container, Grid, Group, List, ScrollArea, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import { Badge, Button, Card, Container, FileButton, Grid, Group, List, ScrollArea, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+
+function parseUrls(value: string) {
+    return value
+        .split(/[\n,]/)
+        .map(url => url.trim())
+        .filter(Boolean);
+}
 
 export default function CreateBatchPage() {
     const [batchName, setBatchName] = useState("");
@@ -13,17 +20,25 @@ export default function CreateBatchPage() {
     const queryClient = useQueryClient();
 
     const urls = useMemo(
-        () => urlsText.split("\n").map(u => u.trim()).filter(Boolean),
+        () => parseUrls(urlsText),
         [urlsText],
     );
+
+    async function handleCsvFile(file: File | null) {
+        if (!file) {
+            return;
+        }
+
+        const fileText = await file.text();
+        setUrlsText(parseUrls(fileText).join("\n"));
+    }
 
     const createBatch = useMutation({
         mutationFn: (payload: { batchName: string; urls: string[] }) =>
             BatchesApi.createBatch(payload.batchName, payload.urls),
-        onSuccess: () => {
+        onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["batches"] });
-            // TODO: redirect to /batches/${result.batch.id} once the single-batch view exists
-            router.push("/batches");
+            router.push(`/batches/${data.batch.id}`);
         },
     });
 
@@ -44,8 +59,20 @@ export default function CreateBatchPage() {
                                 value={batchName}
                                 onChange={e => setBatchName(e.target.value)}
                             />
+                            <Group justify="space-between" align="flex-end">
+                                <Text size="sm" fw={500}>
+                                    URLs (comma or newline separated)
+                                </Text>
+                                <FileButton onChange={handleCsvFile} accept=".csv,text/csv">
+                                    {props => (
+                                        <Button {...props} variant="light" size="xs">
+                                            Import CSV
+                                        </Button>
+                                    )}
+                                </FileButton>
+                            </Group>
                             <Textarea
-                                label="URLs (one per line)"
+                                label="Paste URLs"
                                 value={urlsText}
                                 onChange={e => setUrlsText(e.target.value)}
                                 minRows={14}
