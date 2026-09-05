@@ -7,7 +7,7 @@ export default function SSEContext({
     updateUrlState,
 }: {
     batchId: string
-    updateUrlState: (url: Url) => void,
+    updateUrlState: (url: Url | Url[]) => void,
 }) {
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -19,13 +19,20 @@ export default function SSEContext({
             console.log("SSE connection established.");
         }
 
-        eventSource.addEventListener('url-complete', (event: MessageEvent) => {
+        eventSource.addEventListener('job-updated', (event: MessageEvent) => {
             const data = JSON.parse(event.data) as {
                 result: Url
             };
-            console.log("Received url-complete event:", data);
+            console.log("Received job-updated event:", data);
             updateUrlState(data.result);
         });
+
+        eventSource.addEventListener('multiple-jobs-updated', (event: MessageEvent)=>{
+            const data = JSON.parse(event.data) as {
+                result: Url[]
+            };
+            updateUrlState(data.result);
+        })
     }
 
     const disconnectSSE = useCallback(() => {

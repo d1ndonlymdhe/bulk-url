@@ -1,20 +1,7 @@
 import { integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { URL_JOB_STATUS_VALUES } from "@myapp/shared/config";
 
-
-export const urlJobStatusValues = [
-    // Initial 
-    "queued",
-    // Retry after failure (upto max attempts)
-    "re-queued",
-    // Pinging the URL
-    "processing",
-    // Success
-    "complete",
-    // Failed max attempts time, user has to manually retry and set as queued
-    "failed",
-    // User manually cancelled the job
-    "cancelled"
-] as const;
+export const urlJobStatusValues = URL_JOB_STATUS_VALUES;
 export const urlJobStatusEnum = pgEnum("url_status", urlJobStatusValues);
 export type UrlJobStatus = (typeof urlJobStatusValues)[number];
 export const urlSchema = pgTable("url", {

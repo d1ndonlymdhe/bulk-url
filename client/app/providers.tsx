@@ -16,16 +16,23 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <AppShell header={{ height: 60 }}>
                     <AppShell.Header>
                         <Group h="100%" px="lg" justify="space-between">
-                            <Title order={3} component={Link} href="/" style={navLinkStyle}>
-                                Bulk URL Importer
-                            </Title>
+                            <Link href="/" style={navLinkStyle}>
+                                <Title order={3}>
+                                    Bulk URL Importer
+                                </Title>
+                            </Link>
+
                             <Group gap="xl">
-                                <Title order={5} component={Link} href="/batches" style={navLinkStyle}>
-                                    Batches
-                                </Title>
-                                <Title order={5} component={Link} href="/batches/create" style={navLinkStyle}>
-                                    New Batch
-                                </Title>
+                                <Link href="/batches" style={navLinkStyle}>
+                                    <Title order={5}>
+                                        Batches
+                                    </Title>
+                                </Link>
+                                <Link href="/batches/create" style={navLinkStyle}>
+                                    <Title order={5}>
+                                        New Batch
+                                    </Title>
+                                </Link>
                             </Group>
                         </Group>
                     </AppShell.Header>

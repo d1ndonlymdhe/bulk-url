@@ -1,5 +1,6 @@
 import { connection } from "../../../shared/redisConnection";
-import type { Url } from "../urlImport/schema/url.schema";
+import { UrlRepository } from "../urlImport/repo/url.repo";
+import type { UrlRow } from "@myapp/shared/config";
 import { UserContext } from "./userContext";
 import { Redis } from "ioredis";
 export class ActiveUrlJobsContext {
@@ -7,17 +8,18 @@ export class ActiveUrlJobsContext {
     private static redisConnection = new Redis({
         ...connection
     });
-    static jobCompleted(jobId: string, result: Url) {
-
+    static jobUpdated(jobId: string, result: UrlRow) {
         // Notify all user contexts that the job is complete
         this.userContexts.forEach(userContext => {
-            userContext.jobCompleted(jobId, result);
+            userContext.jobUpdated(jobId, result);
         })
     }
 
-    static jobStarted(jobId: string, result: Url) {
-        this.userContexts.forEach(UserContext => {
-            UserContext.jobStarted(jobId, result);
+    static batchUpdated(urlIds: string[]) {
+        UrlRepository.getUrlsMultiple(urlIds).then(urls => {
+            this.userContexts.forEach(userContext => {
+                userContext.multipleJobsUpdated(urls);
+            })
         })
     }
 

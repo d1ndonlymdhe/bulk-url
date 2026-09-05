@@ -1,6 +1,6 @@
 import { Queue, QueueEvents, type QueueEventsListener } from "bullmq";
 import { connection } from "../shared/redisConnection";
-import { BATCH_QUEUE_NAME, URL_QUEUE_NAME, type BatchJobData, type UrlJobData } from "../shared/config";
+import { BATCH_QUEUE_NAME, URL_QUEUE_NAME, type BatchJobData, type UrlJobData } from "@myapp/shared/config";
 import { UrlRepository } from "./apps/urlImport/repo/url.repo";
 import { ActiveUrlJobsContext } from "./apps/context/jobsContext";
 
@@ -11,8 +11,10 @@ export const urlQueue = new Queue<UrlJobData, string>(URL_QUEUE_NAME, { connecti
 const urlQueueEvents = new QueueEvents(URL_QUEUE_NAME, { connection });
 
 
-interface UrlStartedListener extends QueueEventsListener {
+interface CustomEventsListener extends QueueEventsListener {
     'url-started': (args: { jobId: string }, id: string) => void
+    // Parse as JSON array
+    'batch-updated': (args: { affectedUrlIds: string }, id: string) => void
 }
 
 urlQueueEvents.on('completed', async (job) => {
@@ -20,7 +22,7 @@ urlQueueEvents.on('completed', async (job) => {
     const completedUrl = await UrlRepository.getUrl(job.jobId);
     if (completedUrl) {
         // Notify the job context that the job is complete
-        ActiveUrlJobsContext.jobCompleted(job.jobId, completedUrl);
+        ActiveUrlJobsContext.jobUpdated(job.jobId, completedUrl);
     }
 })
 
@@ -31,17 +33,22 @@ urlQueueEvents.on('failed', async (job) => {
     // same event for the consumer
     if (failedUrl) {
         // Notify the job context that the job is complete
-        ActiveUrlJobsContext.jobCompleted(job.jobId, failedUrl);
+        ActiveUrlJobsContext.jobUpdated(job.jobId, failedUrl);
     }
 })
 
-urlQueueEvents.on<UrlStartedListener>('url-started', async ({ jobId }: { jobId: string }) => {
+urlQueueEvents.on<CustomEventsListener>('url-started', async ({ jobId }: { jobId: string }) => {
     console.log(`Job ${jobId} has started`);
     const jobInfo = await UrlRepository.getUrl(jobId);
     if (jobInfo) {
-        ActiveUrlJobsContext.jobStarted(jobId, jobInfo);
+        ActiveUrlJobsContext.jobUpdated(jobId, jobInfo);
     }
 })
+
+urlQueueEvents.on<CustomEventsListener>('batch-updated', async ({ affectedUrlIds }: { affectedUrlIds: string }) => {
+    ActiveUrlJobsContext.batchUpdated(JSON.parse(affectedUrlIds) as string[]);
+})
+
 
 
 urlQueueEvents.on("failed", async (job) => {

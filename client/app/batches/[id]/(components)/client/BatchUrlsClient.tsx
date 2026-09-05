@@ -41,48 +41,38 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
         mutationFn: async (batchId: string) => {
             return await BatchesApi.retryFailedUrls(batchId);
         },
-        onSuccess: () => {
-            // Optimistic update
-            // setLocalUrls((prevUrls) => {
-            //     return prevUrls.map(u => {
-            //         return {
-            //             ...u,
-            //             jobStatus: u.jobStatus == "failed" ? "re-queued" : u.jobStatus,
-            //             attempts: u.jobStatus == "failed" ? 0 : u.attempts
-            //         }
-            //     })
-            // })
-        }
     })
 
     const { mutate: cancelBatch, isPending: isCancelPending } = useMutation({
         mutationFn: async (batchId: string) => {
             return await BatchesApi.cancelBatch(batchId);
-        },
-        onSuccess: () => {
-            // Optimistic update
-            // setLocalUrls((prevUrls) => {
-            //     return prevUrls.map(u => {
-            //         return {
-            //             ...u,
-            //             jobStatus: u.jobStatus !== "complete" && u.jobStatus !== "failed" ? "cancelled" : u.jobStatus
-            //         }
-            //     })
-            // })
         }
     })
 
     return <div>
         <SSEContext batchId={batchId} updateUrlState={(url) => {
             setLocalUrls(prevUrls => {
-                const index = prevUrls.findIndex(u => u.id === url.id);
-                if (index !== -1) {
+
+                if (Array.isArray(url)) {
                     const updatedUrls = [...prevUrls];
-                    updatedUrls[index] = url;
+                    for (const u of url) {
+                        const index = updatedUrls.findIndex(existingUrl => existingUrl.id === u.id);
+                        if (index !== -1) {
+                            updatedUrls[index] = u;
+                        }
+                    }
                     return updatedUrls;
+                } else {
+                    const index = prevUrls.findIndex(u => u.id === url.id);
+                    if (index !== -1) {
+                        const updatedUrls = [...prevUrls];
+                        updatedUrls[index] = url;
+                        return updatedUrls;
+                    }
+                    // No change if the URL is not found in the current state
+                    return [...prevUrls]
                 }
-                // No change if the URL is not found in the current state
-                return [...prevUrls]
+
             })
         }} ></SSEContext>
         <Group justify="space-between" mb="sm">
@@ -113,7 +103,9 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
                         </TableTr>
                     </TableThead>
                     <TableTbody>
-                        {localUrls.map(url => (
+                        {localUrls.toSorted((a, b) => {
+                            return a.url.localeCompare(b.url)
+                        }).map(url => (
                             <TableTr key={url.id}>
                                 <TableTd>
                                     <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>{url.url}</Text>

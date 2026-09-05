@@ -27,11 +27,11 @@ export const relations = defineRelations(schema, (r) => ({
     })
   },
   urlBatchSchema: {
-    urlSchema: r.one.urlSchema({
+    url: r.one.urlSchema({
       from: r.urlBatchSchema.urlId,
       to: r.urlSchema.id
     }),
-    batchSchema: r.one.batchSchema({
+    batch: r.one.batchSchema({
       from: r.urlBatchSchema.batchId,
       to: r.batchSchema.id
     })

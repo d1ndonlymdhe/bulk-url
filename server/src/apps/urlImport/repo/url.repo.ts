@@ -1,10 +1,10 @@
-import { MAX_URL_RETRIES } from "../../../../shared/config";
+import { MAX_URL_RETRIES } from "@myapp/shared/config";
 import type { DbOrTx } from "../../../dbOrTx";
 import db from "../../../drizzle";
 import { batchSchema } from "../schema/batch.schema";
 import { urlJobStatusEnum, urlSchema, type UrlJobStatus } from "../schema/url.schema";
 import { urlBatchSchema } from "../schema/urlBatch.schema";
-import { eq, sql, or, inArray } from "drizzle-orm";
+import { eq, sql, inArray, desc, asc } from "drizzle-orm";
 
 export class UrlRepository {
     // The last runner argument allows for the service layer to pass in a transaction if it wants.
@@ -25,15 +25,20 @@ export class UrlRepository {
     }
 
     public static async getAllBatches(runner: DbOrTx = db) {
-        const batches = await runner.query.batchSchema.findMany();
+        const batches = await runner.query.batchSchema.findMany({
+            orderBy: (batch, { desc }) => [desc(batch.createdAt)],
+        });
         return batches;
     }
 
     public static async getAllBatchesWithUrls(runner: DbOrTx = db) {
         const batches = await runner.query.batchSchema.findMany({
             with: {
-                urls: true
-            }
+                urls: {
+                    orderBy: (url, { desc }) => [desc(url.createdAt)],
+                }
+            },
+            orderBy: (batch, { desc }) => [desc(batch.createdAt)],
         });
         return batches;
     }
@@ -41,7 +46,9 @@ export class UrlRepository {
     public static async getBatchWithUrls(batchId: string, runner: DbOrTx = db) {
         const batch = await runner.query.batchSchema.findFirst({
             with: {
-                urls: true
+                urls: {
+                    orderBy: (url, { desc }) => [desc(url.createdAt)],
+                }
             },
             where: {
                 id: batchId
@@ -57,6 +64,15 @@ export class UrlRepository {
             }
         })
         return url;
+    }
+
+    public static async getUrlsMultiple(urlIds: string[], runner: DbOrTx = db) {
+        const urls = await runner.query.urlSchema.findMany({
+            where: {
+                RAW: (url) => inArray(url.id, urlIds)
+            }
+        })
+        return urls;
     }
 
     public static async getBatchById(batchId: string, runner: DbOrTx = db) {
@@ -81,7 +97,8 @@ export class UrlRepository {
                                 jobStatus: "re-queued"
                             },
                         ]
-                    }
+                    },
+                    orderBy: (url, { desc }) => [desc(url.createdAt)],
                 }
             },
             where: {
@@ -106,9 +123,11 @@ export class UrlRepository {
                                 jobStatus: "re-queued"
                             },
                         ]
-                    }
+                    },
+                    orderBy: (url, { desc }) => [desc(url.createdAt)],
                 }
-            }
+            },
+            orderBy: (batch, { desc }) => [desc(batch.createdAt)],
         })
         return batches;
     }
@@ -119,7 +138,8 @@ export class UrlRepository {
                 urls: {
                     where: {
                         jobStatus: "failed"
-                    }
+                    },
+                    orderBy: (url, { desc }) => [desc(url.createdAt)],
                 }
             },
             where: {
@@ -175,9 +195,60 @@ export class UrlRepository {
     public static async markAsCancelled(urlId: string, runner: DbOrTx = db) {
         const updatedUrl = await runner.update(urlSchema).set({
             jobStatus: "cancelled",
-            // reset attempts to 0 so that if the user retries the job it will be re-queued
-            attempts: 0
         }).where(eq(urlSchema.id, urlId)).returning();
         return updatedUrl[0];
+    }
+
+    public static async isJobCancelled(urlId: string, runner: DbOrTx = db) {
+        const url = await runner.query.urlSchema.findFirst({
+            where: {
+                id: urlId
+            }
+        })
+        if(!url) {
+            throw new Error(`URL with id ${urlId} not found`);
+        }
+        return url.jobStatus === "cancelled";
+    }
+
+    public static async markBatchAsCancelled(batchId: string, runner: DbOrTx = db) {
+        const urlIds = await runner.transaction(async (tx) => {
+            const batch = await runner.query.batchSchema.findFirst({
+                with: {
+                    urls: {
+                        where: {
+                            OR: [
+                                {
+                                    jobStatus: "processing"
+                                },
+                                {
+                                    jobStatus: "queued"
+                                },
+                                {
+                                    jobStatus: "re-queued"
+                                }
+                            ]
+                        },
+                        orderBy: (url, { desc }) => [desc(url.createdAt)],
+                    }
+                },
+                orderBy: (batch, { desc }) => [desc(batch.createdAt)],
+                where: {
+                    id: batchId
+                }
+            })
+            if (batch) {
+                console.log("Processing urls = ", batch.urls.map((url) => url.id));
+
+                const urlIds = batch.urls.map((url) => url.id);
+                await tx.update(urlSchema).set({
+                    jobStatus: "cancelled",
+                }).where(inArray(urlSchema.id, urlIds));
+                return urlIds;
+            } else {
+                return []
+            }
+        })
+        return urlIds;
     }
 }

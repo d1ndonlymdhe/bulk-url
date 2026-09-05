@@ -1,6 +1,13 @@
 import { Worker, Queue, QueueEventsProducer } from 'bullmq';
 import { config } from 'dotenv';
-import { BATCH_QUEUE_NAME, MAX_URL_RETRIES, URL_QUEUE_NAME, type BatchJobData, type UrlJobData } from '../shared/config';
+import {
+    BATCH_QUEUE_NAME,
+    BULLMQ_QUEUE_EVENT_NAMES,
+    MAX_URL_RETRIES,
+    URL_QUEUE_NAME,
+    type BatchJobData,
+    type UrlJobData,
+} from '@myapp/shared/config';
 import { connection } from '../shared/redisConnection';
 import { UrlRepository } from '../src/apps/urlImport/repo/url.repo';
 import db from '../src/drizzle';
@@ -13,7 +20,6 @@ const redisConnection = new Redis({
     host: connection.host,
     port: connection.port,
 })
-
 
 
 const urlQueueEventsProducer = new QueueEventsProducer(URL_QUEUE_NAME, { connection })
@@ -32,7 +38,6 @@ const batchWorker = new Worker<BatchJobData>(BATCH_QUEUE_NAME, async (job) => {
         db.transaction(async (tx) => {
             const failedUrls = await UrlRepository.getFailedUrlsFromBatch(job.data.batchId, tx);
             if (failedUrls) {
-                await UrlRepository.requeueUrls(failedUrls.urls.map(url => url.id), tx);
                 await urlQueue.addBulk(failedUrls.urls.map(url => ({
                     name: 'url-job',
                     data: {
@@ -45,9 +50,12 @@ const batchWorker = new Worker<BatchJobData>(BATCH_QUEUE_NAME, async (job) => {
                             type: 'exponential',
                             delay: 1000,
                         },
-                        removeOnFail: true
+                        removeOnFail: true,
                     }
                 })));
+                const updatedUrls = await UrlRepository.requeueUrls(failedUrls.urls.map(url => url.id), tx);
+                const urlIds = updatedUrls.map(url => url.id);
+                await urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.BATCH_UPDATED, affectedUrlIds: JSON.stringify(urlIds) })
             }
         })
     }
@@ -75,28 +83,45 @@ const batchWorker = new Worker<BatchJobData>(BATCH_QUEUE_NAME, async (job) => {
 
 const urlWorker = new Worker<UrlJobData>(URL_QUEUE_NAME, async (job, _token, signal) => {
     try {
+        if (signal) {
+            console.log(`Signal received for job ${job.id}: ${signal.aborted}`);
+        }
         const { url } = job.data;
+        // Check if the job has been cancelled before proceeding
+        let alreadyCancelled = await UrlRepository.isJobCancelled(job.id!);
+        if (alreadyCancelled) {
+            return;
+        }
         await UrlRepository.markAsStarted(job.id!)
-        urlQueueEventsProducer.publishEvent({ eventName: "url-started", jobId: job.id! })
+        urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.URL_STARTED, jobId: job.id! })
         const result = await pingUrl(url, signal);
+        // Check again if the job has been cancelled before marking it as complete
+        alreadyCancelled = await UrlRepository.isJobCancelled(job.id!);
+        if (alreadyCancelled) {
+            return;
+        }
         await UrlRepository.markAsComplete(job.id!, result.title, result.duration, result.status);
         return;
     } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-            // DB IS THE SOURCE OF TRUTH
-            await UrlRepository.markAsCancelled(job.id!);
             // This doesn't throw an error
+            console.log("THE FETCH WAS ABORTED")
             return;
         } else {
             // Record as failed
+            const alreadyCancelled = await UrlRepository.isJobCancelled(job.id!);
+            if (alreadyCancelled) {
+                return;
+            }
             await UrlRepository.markAsFailed(job.id!);
+            throw err;
         }
-        throw err;
     }
 }, {
     connection,
     concurrency: 5
 })
+
 
 redisConnection.subscribe('batch-cancel-event', (err, count) => {
     if (err) {
@@ -109,12 +134,14 @@ redisConnection.subscribe('batch-cancel-event', (err, count) => {
 redisConnection.on('message', async (channel, batchId) => {
     if (channel === 'batch-cancel-event') {
         const batch = await UrlRepository.getBatchWithUrls(batchId);
+        const cancelledUrlsIds = await UrlRepository.markBatchAsCancelled(batchId);
         if (batch) {
             const urlIds = batch.urls.map(url => url.id);
             for (const urlId of urlIds) {
                 urlWorker.cancelJob(urlId);
             }
         }
+        await urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.BATCH_UPDATED, affectedUrlIds: JSON.stringify(cancelledUrlsIds) })
     }
 })
 

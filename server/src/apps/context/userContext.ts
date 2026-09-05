@@ -1,5 +1,10 @@
 import type { SSEReplyInterface } from "@fastify/sse";
-import type { Url } from "../urlImport/schema/url.schema";
+import {
+    SSE_EVENT_NAMES,
+    type JobUpdatedSsePayload,
+    type MultipleJobsUpdatedSsePayload,
+    type UrlRow,
+} from "@myapp/shared/config";
 
 export class UserContext {
 
@@ -18,26 +23,23 @@ export class UserContext {
     addActiveUrl(urlId: string) {
         this.activeUrls.add(urlId);
     }
-    jobCompleted(urlId: string, result: Url) {
+    jobUpdated(urlId: string, result: UrlRow) {
         const has = this.activeUrls.has(urlId);
         if (has) {
-            // Send the result to the client via SSE
+            const payload: JobUpdatedSsePayload = { result };
             this.stream.send({
-                event: 'url-complete',
-                data: {
-                    result
-                }
+                event: SSE_EVENT_NAMES.JOB_UPDATED,
+                data: payload,
             });
         }
     }
-    jobStarted(jobId: string, result: Url) {
-        if (this.activeUrls.has(jobId)) {
-            // Using the same event here too, the frontend just updates the data no need for separate event
+    multipleJobsUpdated(urls: UrlRow[]) {
+        const relevantUrls = urls.filter(url => this.activeUrls.has(url.id));
+        if (relevantUrls.length > 0) {
+            const payload: MultipleJobsUpdatedSsePayload = { result: relevantUrls };
             this.stream.send({
-                event: 'url-complete',
-                data: {
-                    result
-                }
+                event: SSE_EVENT_NAMES.MULTIPLE_JOBS_UPDATED,
+                data: payload,
             });
         }
     }

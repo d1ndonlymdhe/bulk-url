@@ -1,4 +1,5 @@
 import { serverFetch } from "@/server_fetch";
+import { MAX_URL_RETRIES, URL_JOB_STATUS_VALUES } from "@myapp/shared/config";
 
 // Mirrors server/src/apps/urlImport/schema/*.schema.ts row shapes.
 // Kept in sync manually since client and server are separate packages.
@@ -9,9 +10,9 @@ export type Batch = {
     updatedAt: string;
 };
 
-export const urlJobStatusValues = ["queued", "re-queued", "processing", "complete", "failed", "cancelled"] as const;
+export const urlJobStatusValues = URL_JOB_STATUS_VALUES;
 export type UrlJobStatus = (typeof urlJobStatusValues)[number];
-export const MAX_URL_RETRIES = 3;
+export { MAX_URL_RETRIES };
 export type Url = {
     id: string;
     url: string;
