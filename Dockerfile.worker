@@ -1,0 +1,18 @@
+FROM oven/bun:alpine AS base
+WORKDIR /app
+
+COPY package.json bun.lock* ./
+COPY client/package.json ./client/package.json
+COPY server/package.json ./server/package.json
+COPY worker/package.json ./worker/package.json
+COPY db/package.json ./db/package.json
+COPY shared/package.json ./shared/package.json
+
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+FROM base
+WORKDIR /app/worker
+
+CMD ["bun", "run", "src/index.ts"]

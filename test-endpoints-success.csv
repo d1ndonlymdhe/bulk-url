@@ -1,1 +1,1 @@
-http://localhost:8000/test-endpoint/1000,http://localhost:8000/test-endpoint/2500,http://localhost:8000/test-endpoint/5000,http://localhost:8000/test-endpoint/10000
+http://nginx:80/test-endpoint/1000,http://nginx:80/test-endpoint/2500,http://nginx:80/test-endpoint/5000,http://nginx:80/test-endpoint/10000

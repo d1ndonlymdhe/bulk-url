@@ -1,4 +1,10 @@
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3000").replace(/\/+$/, "");
+function getApiBase() {
+  const hostBase = typeof window === "undefined"
+    ? (process.env.INTERNAL_API_BASE ?? "http://server:8000")
+    : (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000");
+
+  return hostBase.replace(/\/+$/, "");
+}
 
 export class FastifyRequestError extends Error {
   constructor(
@@ -16,7 +22,8 @@ export class FastifyRequestError extends Error {
 // know about any specific route.
 export async function serverFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
-  const res = await fetch(`${API_BASE}${path}`, {
+  const apiBase = getApiBase();
+  const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
