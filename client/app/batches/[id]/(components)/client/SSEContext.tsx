@@ -11,13 +11,10 @@ export default function SSEContext({
 }) {
     const eventSourceRef = useRef<EventSource | null>(null);
 
-    const registerSSE = useCallback(() => {
+    const registerSSE = () => {
         if (eventSourceRef.current) return;
         const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_API_BASE}register-batch-sse/${batchId}`);
-        eventSource.onerror = (error) => {
-            console.error("SSE error:", error);
-            eventSource.close();
-        }
+        eventSourceRef.current = eventSource;
         eventSource.onopen = () => {
             console.log("SSE connection established.");
         }
@@ -28,7 +25,7 @@ export default function SSEContext({
             };
             updateUrlState(data.result);
         });
-    }, [batchId, updateUrlState]);
+    }
 
     const disconnectSSE = useCallback(() => {
         if (eventSourceRef.current) {
@@ -44,6 +41,6 @@ export default function SSEContext({
         return () => {
             disconnectSSE();
         }
-    }, [registerSSE])
+    }, [batchId])
     return <div></div>;
 }

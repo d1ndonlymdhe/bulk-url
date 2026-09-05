@@ -47,11 +47,9 @@ fastify.get("/register-batch-sse/:batchId", {
     ActiveUrlJobsContext.addUserContext(userContext);
     // Cleanup when the stream is closed
     stream.onClose(() => {
-
         ActiveUrlJobsContext.removeUserContext(contextId);
         console.log(`SSE stream closed for batch ${batchId}, user context ${contextId} removed`);
     })
-
 })
 
 // FOR TESTING
