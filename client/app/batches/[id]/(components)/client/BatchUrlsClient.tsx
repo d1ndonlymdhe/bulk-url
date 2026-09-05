@@ -1,7 +1,8 @@
 "use client";
 import SSEContext from "@/app/batches/[id]/(components)/client/SSEContext";
-import type { UrlJobStatus, Url } from "@/app/batches/api/batchesApi";
-import { Group, Title, Badge, Card, ScrollArea, Table, TableThead, TableTr, TableTh, TableTbody, TableTd, Text } from "@mantine/core";
+import { type UrlJobStatus, type Url, BatchesApi, MAX_URL_RETRIES } from "@/app/batches/api/batchesApi";
+import { Group, Title, Badge, Card, ScrollArea, Table, TableThead, TableTr, TableTh, TableTbody, TableTd, Text, Button } from "@mantine/core";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
 
@@ -10,6 +11,7 @@ const jobStatusColor: Record<UrlJobStatus, string> = {
     processing: "blue",
     complete: "green",
     failed: "red",
+    "re-queued": "orange"
 };
 
 function StatusBadge({ status }: { status: UrlJobStatus }) {
@@ -34,6 +36,12 @@ function ResponseStatusBadge({ url }: { url: Url }) {
 export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchId: string }) {
     const [localUrls, setLocalUrls] = useState<Url[]>(urls);
 
+    const { mutate, isPending, isSuccess, isError } = useMutation({
+        mutationFn: async (batchId: string) => {
+            return await BatchesApi.retryFailedUrls(batchId);
+        }
+    })
+
     return <div>
         <SSEContext batchId={batchId} updateUrlState={(url) => {
             setLocalUrls(prevUrls => {
@@ -49,6 +57,24 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
         }} ></SSEContext>
         <Group justify="space-between" mb="sm">
             <Title order={2} size="h4">URLs</Title>
+            <Button onClick={() => {
+                mutate(batchId, {
+                    onSuccess: () => {
+                        // Optimistic update
+                        setLocalUrls((prevUrls) => {
+                            return prevUrls.map(u => {
+                                return {
+                                    ...u,
+                                    jobStatus: u.jobStatus == "failed" ? "re-queued" : u.jobStatus,
+                                    attempts: u.jobStatus == "failed" ? 0 : u.attempts
+                                }
+                            })
+                        })
+                    }
+                })
+            }} loading={isPending} disabled={localUrls.filter(url => url.jobStatus === "failed").length === 0}>
+                Retry Failed
+            </Button>
             <Badge variant="light">{urls.length} total</Badge>
         </Group>
         <Card withBorder radius="md" padding={0}>
@@ -61,8 +87,7 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
                             <TableTh>Title</TableTh>
                             <TableTh>Response</TableTh>
                             <TableTh>Time</TableTh>
-                            <TableTh>Created at</TableTh>
-                            <TableTh>Updated at</TableTh>
+                            <TableTh>Attempts</TableTh>
                         </TableTr>
                     </TableThead>
                     <TableTbody>
@@ -84,10 +109,7 @@ export default function BatchUrlsClient({ urls, batchId }: { urls: Url[], batchI
                                     <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{url.responseTime != null ? `${url.responseTime} ms` : "—"}</Text>
                                 </TableTd>
                                 <TableTd>
-                                    <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{new Date(url.createdAt).toLocaleString()}</Text>
-                                </TableTd>
-                                <TableTd>
-                                    <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{new Date(url.updatedAt).toLocaleString()}</Text>
+                                    <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{url.attempts}/{MAX_URL_RETRIES}</Text>
                                 </TableTd>
                             </TableTr>
                         ))}

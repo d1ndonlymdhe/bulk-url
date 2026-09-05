@@ -1,3 +1,4 @@
+import db from "../../../drizzle";
 import { batchQueue } from "../../../queue";
 import { UrlRepository } from "../repo/url.repo";
 
@@ -41,6 +42,17 @@ export class UrlService {
             });
         }
         return result;
+    }
+
+    public static async retryFailedUrls(batchId: string) {
+        const batch = await UrlRepository.getBatchById(batchId);
+        if (!batch) {
+            throw new Error(`Batch with id ${batchId} not found`);
+        }
+        await batchQueue.add('batch-job', {
+            batchId: batch.id,
+            forceRetry: true
+        })
     }
 
 }

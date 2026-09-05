@@ -9,14 +9,15 @@ export type Batch = {
     updatedAt: string;
 };
 
-export const urlJobStatusValues = ["queued", "processing", "complete", "failed"] as const;
+export const urlJobStatusValues = ["queued", "re-queued", "processing", "complete", "failed"] as const;
 export type UrlJobStatus = (typeof urlJobStatusValues)[number];
-
+export const MAX_URL_RETRIES = 3;
 export type Url = {
     id: string;
     url: string;
     jobStatus: UrlJobStatus;
     title: string | null;
+    attempts: number;
     responseTime: number | null;
     responseStatus: number | null;
     createdAt: string;
@@ -42,7 +43,7 @@ export namespace BatchesApi {
     }
 
     // GET /batches/:batchId/urls
-    export async  function getBatchUrls(batchId: string) {
+    export async function getBatchUrls(batchId: string) {
         return serverFetch<Url[]>(`/batches/${encodeURIComponent(batchId)}/urls`);
     }
 
@@ -51,6 +52,14 @@ export namespace BatchesApi {
         return serverFetch<ImportUrlsResult>("/batch", {
             method: "POST",
             body: JSON.stringify({ batchName, urls }),
+        });
+    }
+
+    // POST /batch/:batchId/retry
+    export function retryFailedUrls(batchId: string) {
+        return serverFetch<void>(`/batch/${encodeURIComponent(batchId)}/retry`, {
+            method: "POST",
+            body: JSON.stringify({}),
         });
     }
 }

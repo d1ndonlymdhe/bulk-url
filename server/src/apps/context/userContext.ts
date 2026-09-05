@@ -2,6 +2,7 @@ import type { SSEReplyInterface } from "@fastify/sse";
 import type { Url } from "../urlImport/schema/url.schema";
 
 export class UserContext {
+
     id: string;
     activeUrls = new Set<string>();
     stream: SSEReplyInterface;
@@ -17,14 +18,24 @@ export class UserContext {
     addActiveUrl(urlId: string) {
         this.activeUrls.add(urlId);
     }
-    completeUrl(urlId: string,result: Url) {
-        const removed = this.activeUrls.delete(urlId);
-        // Send the result to the client via SSE
-        if(removed){
+    jobCompleted(urlId: string, result: Url) {
+        const has = this.activeUrls.has(urlId);
+        if (has) {
+            // Send the result to the client via SSE
             this.stream.send({
                 event: 'url-complete',
                 data: {
-                    urlId,
+                    result
+                }
+            });
+        }
+    }
+    jobStarted(jobId: string, result: Url) {
+        if (this.activeUrls.has(jobId)) {
+            // Using the same event here too, the frontend just updates the data no need for separate event
+            this.stream.send({
+                event: 'url-complete',
+                data: {
                     result
                 }
             });

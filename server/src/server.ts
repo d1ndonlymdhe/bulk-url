@@ -67,6 +67,19 @@ fastify.get("/test-endpoint/:waitTime", {
     res.send({ message: `Waited for ${waitTime} ms` });
 })
 
+fastify.get("/test-endpoint/:waitTime/fail", {
+    schema: {
+        params: Type.Object({
+            waitTime: Type.Number()
+        })
+    }
+}, async (req, res) => {
+    const { waitTime } = req.params;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+    res.raw.socket?.destroy();
+    // res.send({ message: `Waited for ${waitTime} ms` });
+})
+
 
 fastify.get("/", async (req, res) => {
     res.send({ message: "HELLO" });
@@ -111,6 +124,18 @@ fastify.post("/batch", {
 }, async (req, res) => {
     const { batchName, urls } = req.body;
     const result = await UrlService.importUrls(batchName, urls);
+    res.send(result);
+})
+
+fastify.post("/batch/:batchId/retry", {
+    schema: {
+        params: Type.Object({
+            batchId: Type.String()
+        })
+    }
+}, async (req, res) => {
+    const { batchId } = req.params;
+    const result = await UrlService.retryFailedUrls(batchId);
     res.send(result);
 })
 

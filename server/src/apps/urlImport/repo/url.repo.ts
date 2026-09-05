@@ -1,9 +1,10 @@
+import { MAX_URL_RETRIES } from "../../../../shared/config";
 import type { DbOrTx } from "../../../dbOrTx";
 import db from "../../../drizzle";
 import { batchSchema } from "../schema/batch.schema";
-import { urlSchema, type UrlJobStatus } from "../schema/url.schema";
+import { urlJobStatusEnum, urlSchema, type UrlJobStatus } from "../schema/url.schema";
 import { urlBatchSchema } from "../schema/urlBatch.schema";
-import { eq } from "drizzle-orm";
+import { eq, sql, or, inArray } from "drizzle-orm";
 
 export class UrlRepository {
     // The last runner argument allows for the service layer to pass in a transaction if it wants.
@@ -72,7 +73,14 @@ export class UrlRepository {
             with: {
                 urls: {
                     where: {
-                        jobStatus: "queued"
+                        OR: [
+                            {
+                                jobStatus: "queued"
+                            },
+                            {
+                                jobStatus: "re-queued"
+                            }
+                        ]
                     }
                 }
             },
@@ -85,13 +93,64 @@ export class UrlRepository {
         return batch;
     }
 
-    public static async updateUrlJobResult(urlId: string, jobStatus: UrlJobStatus, title: string | null, responseTime: number, responseStatus: number, runner: DbOrTx = db) {
+    public static async getFailedUrlsFromBatch(batchId: string, runner: DbOrTx = db) {
+        const batch = await runner.query.batchSchema.findFirst({
+            with: {
+                urls: {
+                    where: {
+                        jobStatus: "failed"
+                    }
+                }
+            },
+            where: {
+                id: batchId
+            }
+        },
+        )
+
+        return batch;
+    }
+
+    public static async requeueUrls(urlIds: string[], runner: DbOrTx = db) {
+        const updatedUrls = await runner.update(urlSchema).set({
+            jobStatus: "queued",
+            attempts: 0,
+        }).where(inArray(urlSchema.id, urlIds)).returning();
+        return updatedUrls;
+    }
+
+    public static async markAsStarted(urlId: string, runner: DbOrTx = db) {
         const updatedUrl = await runner.update(urlSchema).set({
-            jobStatus: jobStatus,
+            jobStatus: "processing",
+            attempts: sql`${urlSchema.attempts}+1`
+        }).where(eq(urlSchema.id, urlId)).returning();
+        return updatedUrl[0];
+    }
+
+    public static async markAsComplete(urlId: string, title: string | null, responseTime: number | null, responseStatus: number | null, runner: DbOrTx = db) {
+        const updatedUrl = await runner.update(urlSchema).set({
+            jobStatus: "complete",
             title,
             responseTime,
             responseStatus
         }).where(eq(urlSchema.id, urlId)).returning();
         return updatedUrl[0];
+    }
+
+    public static async markAsFailed(urlId: string, runner: DbOrTx = db) {
+        // If the task has failed less than MAX_RETRIES_TIMES mark as queued again and increment the attempts counter, after max attempts the user retries manually
+        console.log(`Marking URL ${urlId} as failed, checking attempts...`);
+        try {
+            const updatedUrl = await runner.update(urlSchema).set({
+                jobStatus: sql`CASE
+                WHEN ${urlSchema.attempts} < ${MAX_URL_RETRIES} THEN 're-queued'::${urlJobStatusEnum}
+                else 'failed'::${urlJobStatusEnum}
+                END`
+            }).where(eq(urlSchema.id, urlId)).returning();
+            console.log(`URL ${urlId} marked as ${updatedUrl[0]?.jobStatus}`);
+            return updatedUrl[0];
+        } catch (err) {
+            console.error(`Error marking URL ${urlId} as failed:`, err);
+        }
     }
 }
