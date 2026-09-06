@@ -22,7 +22,8 @@ const redisConnection = new Redis({
 const urlQueueEventsProducer = new QueueEventsProducer(URL_QUEUE_NAME, { connection });
 const urlQueue = new Queue<UrlJobData>(URL_QUEUE_NAME, { connection });
 
-urlQueue.setGlobalRateLimit(10, 1000);
+await urlQueue.setGlobalConcurrency(5);
+await urlQueue.setGlobalRateLimit(10, 1000);
 
 const batchWorker = new Worker<BatchJobData>(BATCH_QUEUE_NAME, async (job) => {
     const queuedUrls = await UrlRepository.getUrlsToProcessFromBatch(job.data.batchId);
@@ -109,12 +110,16 @@ const urlWorker = new Worker<UrlJobData>(URL_QUEUE_NAME, async (job, _token, sig
             await urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED, jobId: job.id!, status: 'cancelled' });
             return;
         }
-
+        const cancelled = await UrlRepository.isJobCancelled(job.id!);
+        if (cancelled) {
+            await urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED, jobId: job.id!, status: 'cancelled' });
+            return;
+        }
         const updated = await UrlRepository.markAsFailed(job.id!);
         await urlQueueEventsProducer.publishEvent({ eventName: BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED, jobId: job.id!, status: updated!.jobStatus });
         throw err;
     }
-}, { connection, concurrency: 5 });
+}, { connection, concurrency: 5});
 
 redisConnection.subscribe('batch-cancel-event', (err, count) => {
     if (err) {

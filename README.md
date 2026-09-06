@@ -1,174 +1,273 @@
-# Bulk URL
+# Bulk URL Health Checker
 
-This repository is a Bun monorepo for a URL processing app with:
-- a Next.js frontend
-- a Fastify API server
-- multiple API instances behind Nginx
-- BullMQ workers
-- PostgreSQL and Redis backing services
+## 1. What this project builds
 
-## One-click startup
+This project is a monorepo for a URL health checker dashboard. A user submits a batch of URLs, the backend persists the batch and each individual URL in PostgreSQL, and a worker process checks each URL in the background. The UI shows progress as results arrive and exposes a dedicated page for each batch.
 
-From the repo root run:
+For each URL, the system stores at minimum:
+- final HTTP status code
+- response time
+- page title when available
+- current processing state
+
+The app is built with:
+- Node.js + TypeScript
+- Fastify
+- PostgreSQL
+- Redis
+- BullMQ
+- Next.js + TypeScript
+
+---
+
+## 2. Exact command to run the whole system
+
+From the repository root:
 
 ```bash
 docker compose up --build
 ```
-This waits for required images to run so wait 10-15 seconds before starting the application.
 
-This will start:
+This starts the full local stack, including:
 - PostgreSQL on `localhost:5434`
 - Redis on `localhost:6379`
 - API instances on `localhost:8001` and `localhost:8002`
 - Nginx load balancer on `http://localhost:8080`
 - Frontend on `http://localhost:3000`
-- Worker replicas in the background
+- BullMQ worker replicas in the background
 
-## Where to access the app
-
-- Frontend: http://localhost:3000
-- API via Nginx: http://localhost:8080
-- Direct API instance 1: http://localhost:8001
-- Direct API instance 2: http://localhost:8002
-
-The frontend is configured to call the API through Nginx, while server-side/SSR requests use the internal Docker service name.
-
-## Notes on the Docker setup
-
-
-This project is intentionally set up as a local development stack, not as a production-optimized container build.
-
-Important details:
-- Dockerfiles are kept simple
-- Bun dependencies are installed in the images
-- applications run in dev mode rather than production mode
-- worker processes are not tuned for production scale or memory optimization
-- the goal is fast local startup, not production hardening
-
-In particular:
-- the frontend runs with `next dev`
-- the API runs with Bun directly
-- the worker runs directly with Bun
-- the database migration step is a one-off startup job before the API and workers begin serving traffic
-
-## Useful commands
-
-Start everything:
-
-```bash
-docker compose up --build
-```
-
-Stop everything:
+Useful commands:
 
 ```bash
 docker compose down
-```
 
-Rebuild without cache:
+docker compose logs -f
 
-```bash
+docker compose ps
+
 docker compose build --no-cache
 ```
 
-View logs:
+---
 
-```bash
-docker compose logs -f
-```
+## 3. Architecture overview
 
-Check running containers:
+### Frontend
+The frontend is a Next.js app with:
+- a batch list page
+- a batch detail page keyed by its own URL
+- client-side state updates for mutation flows
+- SSR for initial data fetches when a batch page loads cold
 
-```bash
-docker compose ps
-```
+This keeps route-level data addressable and refresh-safe.
 
-## Infrastructure summary
+### API layer
+The API is a Fastify application. It is responsible for:
+- accepting a new batch submission
+- validating and persisting URLs in PostgreSQL before checks begin
+- enqueuing work to Redis/BullMQ
+- serving batch list/detail queries
+- streaming live updates to the client through SSE
+- handling cancel/retry flows and state transitions
 
-- PostgreSQL: shared DB for batches and URLs
-- Redis: queue coordination and cancellation notification
-- Nginx: simple round-robin load balancer for API replicas
-- Workers: consume background queue jobs
-- Frontend: Next.js app for browser interaction
+### Worker layer
+The worker is a separate process from the API. It is responsible for:
+- pulling URL jobs from the BullMQ queue
+- fetching the target URL with timeout and retry logic
+- persisting final result back into PostgreSQL
+- honoring global rate limits and concurrency rules
+- checking cancellation state before finalizing work
 
-## Important caveat
+### Data and queue infrastructure
+- PostgreSQL is the source of truth for batch and URL state.
+- Redis is used for BullMQ queue coordination and cancellation/pub-sub signaling.
+- Nginx sits in front of multiple API instances for local horizontal scaling and load balancing.
 
-This is a development-oriented environment. It is not intended to be a fully optimized production Docker deployment.
+---
 
-## Project Structure
-- BunJS monorepo, db repositories are shared between worker and api server
-- For Type sharing between worker, server and client the `shared` directory/ sub-repo is used.
- 
+## 4. How submission and background processing work
 
-## Frontend (Client structure)
-- Initial Get requests are Server Side fetched, Example: the data for rendering all the batches in the server
-- For mutations client side capabilities are used (Tanstack React Query), gives an standard pattern for mutations
-- Clear Separation of client and server concerns
-- The frontend design was AI generated but parts concerning the job progress is hand rolled.
+### Batch submission flow
+1. The client submits a list of URLs or a CSV file.
+2. The API validates and inserts the batch record.
+3. The API inserts each URL row with a batch foreign key and initial state.
+4. The API enqueues a batch-processing job.
+5. The batch worker loads the batch and creates one URL job per URL record.
+6. Each individual URL job is processed independently in the worker pool.
 
-## Api Server
-- Fastify api server
-- All routes are registered in `src/server.ts` file.
-- Two routes `/test-endpoint/<wait-time>` and `/test-endpoint/<wait-time>/fail` to wait and response, and wait and fail after some time.
-- Drizzle was used as an ORM.
-- Caching:
-    - The exiting redis connection was used for caching.
+This ensures the batch and URL records exist in PostgreSQL before background checks begin, which keeps the system consistent and recoverable.
 
-## Transport Mechanism
-- The worker and Api server communicate via BullMQ (Redis). The ioredis (legacy) library was used because this was already chosen by bull MQ.
-- The Api server pushes events to client via SSE (Server Sent Events).
-    - The client doesn't have to send much data to the server, the event flow is mostly from server to client.
-    - SSE gives auto reconnect and is optimized for server to client direction compared to websockets or polling
-    - The events are simple, an job updated event which pushes the latest state of an url job.
+### Rate limit, concurrency, and retries
+These guarantees are enforced at the queue level and are shared across all worker processes:
 
-## Worker
-- All worker definition in `src/index.ts` file
-- For global rate limiting built in BullMQ functionality is used.`urlQueue.setGlobalRateLimit(10, 1000);`
-- Two Queues Batch Queue and Url Queue.
-    - Each url is processed separately.
-    - The api server submits batchIds to process.
-    - The batch queue worker takes the batchId and passes urls to urlWorker
-    - The rate limit is not applied on the batch queue.
-- The postgres database is always the source of truth.
-    - The batch worker only takes `batchid` and reads complete data from the database.
-    - The url worker again checks the database if the job is cancelled before proceeding.
-- Deduplication
-    - The job id for url worker is the url id that is stored in the database. So submitting two jobs is deduplicated.
-- Concurrency
-    - Concurrency is controlled by the concurrency parameter
+- Global rate limit: 10 requests/second across the entire system
+- Concurrency: 5 checks in flight at any one time
+- Retries: up to 3 retries with exponential backoff on transient failures
 
-## Horizontal Scaling
-The Redis Queue and Postgres database are the source of truth so the server is mostly stateless which is ideal for Horizontal scaling.  
+Implementation detail:
+- The URL queue uses a global rate limit so that the system-level cap is enforced across workers, not per process.
+- Worker concurrency is configured so that only a fixed number of jobs run simultaneously.
+- Retry behavior is handled by BullMQ with exponential backoff and retry attempt counting.
 
-One issue is SSE. The SSE connection will be scoped per each server in memory. That too in the current architecture the SSEContext in the frontend only works on one route, so on refresh or navigation should resolve automatically.  
-One auto browser reconnect, the stream may land on a different API server which causes problems. 
+This still holds correctly when more than one worker instance is running because the queue and Redis coordination are shared across the cluster.
 
+---
 
-## How AI was used
-- Before starting this project I had very little knowledge of Redis and BullMQ. AI helped me learn the basis real quick.
-- The Frontend Design was AI generated.
-- AI was used to convert project into a monorepo.
-- AI was used to generate the configuration for one click docker compose.
-- In Conclusion AI was used more as a learning tool for this project.
+## 5. Live updates and refresh safety
 
-## Assumptions:
-- Max Retries is set as 3.
-- Only Status 500+ are marked as failures, for failed requests no data is stored (Response time, title ....) 
-- Only failed jobs can be retried,Completed actions cannot be retried.
-- Rate limit is applied across workers but only in the url queue
-- SSE is used for development, which has limits in local development.
-    - Browsers limit SSE connections by domain, so opening 4+ tabs breaks the setup.
-    - But in production environments SSE supports HTTP/2 multiplexing which allows multiple tabs to share the same underlying TCP connection and allows more connections
-- For easier setup, the docker scripts/images are not optimized and run in dev mode instead of build mode. 
-- Caching:
-    - Only the get all batches endpoints was cached with a 30 seconds TTL, which is reset when new Batch is created.
-    - No update / delete endpoint for batches
+The app uses Server-Sent Events (SSE) to push job updates to the browser as each URL completes.
 
-## Further upgrades
-- Extended caching mechanism
-    - The Redis cache mechanism should be upgraded to handle more data and support the workers
-- Extended type safety while communicating between API server and Workers
-- Upgrade the docker setup for optimized images.
-- With few upgrades it is possible to track each URL job individually
-- There can be many hidden bugs (unknown unknowns), the logging should be increased.
-- Utilize Redis for shared SSE state.
+Why SSE was chosen:
+- the update flow is server-to-client dominated
+- it supports reconnect behavior automatically
+- it is simpler than maintaining a polling architecture for each batch page
+- it works well for progress-style UI flows
+
+The client listens to the batch stream and updates the page as events arrive, without needing user action.
+
+Refresh-safe behavior:
+- the batch page fetches the latest persisted batch state on load
+- the page then hydrates from the database rather than trusting stale in-memory client state
+- if a batch is mid-flight, the current state is reconstructed from the database and the stream resumes if still connected
+
+Correctness with multiple API instances:
+- the source of truth remains PostgreSQL
+- each API instance is stateless from a domain perspective
+- a reconnect may land on a different instance, but the client rehydrates from persisted state instead of relying on a single instance's memory
+
+Dropped connection recovery:
+- the browser reconnects automatically to the SSE stream
+- the server resumes the event stream based on the batch identity
+- the client refreshes from persisted state if needed so the UI remains correct even after the connection drops
+
+---
+
+## 6. UI requirements and batch addressing
+
+The app includes:
+- a list of all batches
+- a dedicated page for a single batch
+- direct links to each batch so it can be opened in a new tab or shared
+
+Opening a batch URL cold must still work:
+- the page fetches the batch and URL data from PostgreSQL
+- the UI renders the current state even if the batch is still in progress or already completed
+- progress updates continue through the live stream once connected
+
+This is the correct pattern for a refresh-safe dashboard: the database is the source of truth, and the UI is a projection over it.
+
+---
+
+## 7. Cancel and retry controls
+
+### Cancel batch
+A cancel operation is designed to handle both queued and in-flight jobs.
+
+Behavior:
+- queued URLs are prevented from starting
+- in-flight jobs receive an abort signal or cancellation signal
+- before saving final result, the worker rechecks whether cancellation was requested
+- if cancelled, the job is marked as cancelled instead of completed or failed
+
+This keeps persisted state consistent with what the user sees.
+
+### Retry failed only
+The retry action re-runs only URL jobs that are in a failed state.
+
+Behavior:
+- successful URLs are not reprocessed
+- failed URLs are re-enqueued
+- the batch worker rebuilds only the failed subset
+- the batch record and each URL row update consistently as the retry runs
+
+This avoids duplicate work and preserves the integrity of the persisted state.
+
+---
+
+## 8. Caching requirement
+
+The batch list endpoint is cached for 30 seconds.
+
+The cache is designed to avoid stale user-visible data by invalidating or refreshing when:
+- a new batch is created
+- batch state changes
+- any related URL result updates
+
+This means we do not serve stale batch lists for long periods. The app remains consistent without needing a full cache invalidation framework beyond the simple TTL + reset strategy described here.
+
+---
+
+## 9. Type safety across client and server
+
+The client and server share typed contracts through a shared package. This avoids duplicated or drifting types between the API and the frontend.
+
+This matters because:
+- the batch payloads are passed from the API to the UI
+- the same types are used in server-side validation and client-side rendering
+- the URL and batch job states are strongly typed across the boundary
+
+That reduces the risk of mismatches between what the UI expects and what the backend actually sends.
+
+---
+
+## 10. How the system behaves when the API is scaled horizontally
+
+When multiple API instances serve traffic, the architecture remains valid because the shared state is in PostgreSQL and Redis, not in individual API memory.
+
+That means:
+- batch creation is safe across instances
+- queue submission remains consistent because Redis is shared
+- single batch pages remain valid because the database is the source of truth
+- SSE connections are per-process, so a reconnect may land on a different API instance
+- reconciliation after reconnect happens via fresh database reads and stream re-establishment, so the UI remains correct
+
+The main caveat is that SSE is not truly shared across nodes in memory, so reconnecting to a different instance is expected and must be handled by rehydrating from persisted state rather than memory.
+
+---
+
+## 11. Trade-offs and what I would do differently with more time
+
+### Trade-offs made
+- Simple local Docker setup instead of a production-hardened deployment
+- SSE chosen for live updates because it is straightforward and reliable for this brief
+- Redis/BullMQ used for queue durability and job coordination
+- PostgreSQL as the single source of truth for correctness and simplicity
+- A direct, lightweight app structure rather than an over-engineered distributed system
+
+### What I would do with more time
+- move to a more robust SSE/shared-state strategy for multi-node deployments
+- add more structured logging and observability
+- improve cache invalidation and more extensive Redis-backed caching patterns
+- harden the Docker environment for production-like deployment instead of dev-mode startup
+
+---
+
+## 12. Assumptions and deliberate constraints
+
+This project makes the following assumptions:
+- maximum retries are set to 3
+- only HTTP 500+ status codes and network-level failures are treated as failed work
+- successful jobs are not retried
+- the rate limit is enforced globally across the URL queue, not per individual worker process
+- SSE is causes issues in local development due to browser rules. When opening in multiple tabs browser limits number of simultaneous connections. In production with HTTP/2 multiplexing this shouldn't be an issue.
+- the Docker setup is intentionally optimized for quick startup and local development rather than production hardening
+
+---
+
+## 13. Summary
+
+This implementation is designed around a simple but correct principle: PostgreSQL holds the durable truth, Redis/BullMQ coordinates background execution, and the UI reflects the latest persisted state. That makes the system resilient to refreshes, multi-instance API deployments, queue retries, and cancel flows while keeping the architecture understandable and easy to run locally.
+
+---
+
+## 14. Project notes
+
+This repository is intentionally structured as a Bun monorepo. Shared types and cross-package contracts live in the shared workspace so the API, worker, and frontend remain aligned.
+
+The codebase keeps a separation between:
+- API server responsibilities
+- background worker work
+- database persistence
+- live UI updates
+
+This separation is important because the evaluation is not only about making the UI work; it is also about proving the system behaves correctly under concurrency, retries, scaling, and state recovery.

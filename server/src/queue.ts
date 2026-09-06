@@ -34,7 +34,7 @@ urlQueueEvents.on<CustomEventsListener>(BULLMQ_QUEUE_EVENT_NAMES.URL_UPDATED, as
         console.log("job status = ", jobInfo?.jobStatus);
         ActiveUrlJobsContext.jobUpdated(jobId, {
             ...jobInfo,
-            jobStatus: status as any
+            // jobStatus: status
         });
     }
 })
