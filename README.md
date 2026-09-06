@@ -182,6 +182,15 @@ Behavior:
 
 This avoids duplicate work and preserves the integrity of the persisted state.
 
+### Idempotency and deduplication strategy
+
+To maintain consistency across retries, restarts, and distributed workers, the system enforces idempotency at multiple levels:
+
+- **Deterministic Job IDs in BullMQ:** Every URL job is enqueued using its database UUID as the job identifier (`opts: { jobId: url.id }`). BullMQ enforces uniqueness by `jobId`, preventing duplicate active jobs even if a batch trigger is processed more than once.
+- **Transactional DB Persistence Before Enqueuing:** Batch and URL records are committed in PostgreSQL inside an atomic database transaction before any job is added to BullMQ. The queue only carries references (`batchId`, `urlId`), guaranteeing workers never process orphan or uncommitted data.
+- **State Check Gates:** Workers query PostgreSQL (`isJobCancelled`) both before initiating the HTTP check and immediately after completing it before writing results. This prevents zombie in-flight jobs from overwriting a cancelled state.
+- **Isolated Retry Re-enqueueing:** The "Retry Failed Only" flow strictly queries `jobStatus = 'failed'`, purges any stale BullMQ job references (`await job.remove()`), resets attempt counts, and re-enqueues solely the failed records. Successful checks are never re-executed.
+
 ---
 
 ## 8. Caching requirement
@@ -249,7 +258,7 @@ This project makes the following assumptions:
 - only HTTP 500+ status codes and network-level failures are treated as failed work
 - successful jobs are not retried
 - the rate limit is enforced globally across the URL queue, not per individual worker process
-- SSE is causes issues in local development due to browser rules. When opening in multiple tabs browser limits number of simultaneous connections. In production with HTTP/2 multiplexing this shouldn't be an issue.
+- Local SSE connection limits: Browsers enforce a limit (typically 6) on simultaneous HTTP/1.1 connections per host when opening multiple tabs. In a production environment with HTTP/2 or HTTP/3 multiplexing, this limitation is mitigated.
 - the Docker setup is intentionally optimized for quick startup and local development rather than production hardening
 
 ---
@@ -271,3 +280,13 @@ The codebase keeps a separation between:
 - live UI updates
 
 This separation is important because the evaluation is not only about making the UI work; it is also about proving the system behaves correctly under concurrency, retries, scaling, and state recovery.
+
+## Testing & Verification Guide
+Test CSV files are provided in the repo root:
+- `test-endpoints-mixed.csv`: Tests concurrency delays (1000ms to 20000ms) and 500 error retries.
+- `test-endpoints-failure.csv`: Tests retry exhaustion (3 attempts) with exponential backoff.
+- `test-endpoints-success.csv`: Tests successful 200 checks.
+To test controls:
+1. **Concurrency & Rate Limit:** Upload `test-endpoints-mixed.csv`. Observe that 5 jobs are in processing state at a time.
+2. **Cancellation:** Upload the mixed CSV and click "Cancel Batch" while the 10s/20s jobs are running. Verify in logs that in-flight requests abort and queued jobs are skipped.
+3. **Retry Failed:** After failures finish all 3 attempts, click "Retry Failed" to verify only the failed jobs re-run.
